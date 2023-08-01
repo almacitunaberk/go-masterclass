@@ -6,10 +6,11 @@ import (
 
 	db "github.com/almacitunaberk/go_masterclass/db/sqlc"
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 )
 
 type CreateAccountRequest struct {
-	Owner string `json:"owner" binding:"required"`
+	Owner    string `json:"owner" binding:"required"`
 	Currency string `json:"currency" binding:"required,currency`
 }
 
@@ -17,18 +18,25 @@ func (server *Server) CreateAccount(ctx *gin.Context) {
 	var req CreateAccountRequest
 	err := ctx.ShouldBindJSON(&req)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest,  errorResponse(err))
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 
 	arg := db.CreateAccountParams{
-		Owner: req.Owner,
+		Owner:    req.Owner,
 		Currency: req.Currency,
-		Balance: 0,
+		Balance:  0,
 	}
 
 	account, err := server.store.CreateAccount(ctx, arg)
 	if err != nil {
+		if pqError, ok := err.(*pq.Error); ok {
+			switch pqError.Code.Name() {
+			case "foreign_key_violation", "unique_violation":
+				ctx.JSON(http.StatusForbidden, errorResponse(err))
+				return
+			}
+		}
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
@@ -61,7 +69,7 @@ func (server *Server) GetAccount(ctx *gin.Context) {
 }
 
 type ListAccountRequest struct {
-	PageID int32 `form:"page_id" binding:"required,min=1"`
+	PageID   int32 `form:"page_id" binding:"required,min=1"`
 	PageSize int32 `form:"page_size" binding:"required,min=5,max=10"`
 }
 
@@ -73,7 +81,7 @@ func (server *Server) ListAccount(ctx *gin.Context) {
 	}
 
 	arg := db.ListAccountsParams{
-		Limit: req.PageSize,
+		Limit:  req.PageSize,
 		Offset: (req.PageID - 1) * req.PageSize,
 	}
 
